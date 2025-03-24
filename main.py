@@ -14,8 +14,8 @@ st.set_page_config(
 # Generate a unique session ID
 session_id = str(uuid.uuid4())
 
-url = "https://html5solutions.app.n8n.cloud/webhook/7eba5fc5-2a52-4ec2-bc37-54aa358a22a1"
-
+# url = "https://html5solutions.app.n8n.cloud/webhook/7eba5fc5-2a52-4ec2-bc37-54aa358a22a1"
+url= "https://html5solutions.app.n8n.cloud/webhook-test/7eba5fc5-2a52-4ec2-bc37-54aa358a22a1"
 if "history" not in st.session_state:
     st.session_state.history = []
 
@@ -31,7 +31,7 @@ def send_message():
             "action": "sendMessage"
         }
         res = requests.post(url, json=body)
-        # print("checking Response data:", res.text)
+        print("checking Response data:", res.text)
         # Check if the response content is not empty
         if res.content:
             try:
@@ -49,24 +49,28 @@ def send_message():
             # print("Response data:", res)
 
             # Check if the response is in the expected format
-            if isinstance(res, list) and len(res) > 0 and "output" in res[0]:
-                data = res[0]["output"]
+            if isinstance(res, list) and len(res) > 0:
+                data = res
 
-                # Parse the response data into a list of dictionaries
-                rows = [row for row in data.split('\n') if row.strip()]
-                columns = rows[0].split(' | ')
-                records = [dict(zip(columns, row.split(' | '))) for row in rows[1:] if row]
+                # Check if the response should not be shown in a table
+                if "output" in data[0] and (data[0]["output"].startswith("Hello!") or "No record found" in data[0]["output"]):
+                    st.session_state.history.append({
+                        "question": user_input,
+                        "answer": data[0]["output"]
+                    })
+                else:
+                    # Convert the response data into a DataFrame
+                    df = pd.DataFrame(data)
 
-                # Debug print to verify parsed records
-                # print("Parsed records:", records)
+                    # Ensure all columns have consistent types
+                    for column in df.columns:
+                        if df[column].apply(lambda x: isinstance(x, list)).any():
+                            df[column] = df[column].apply(lambda x: str(x) if isinstance(x, list) else x)
 
-                # Convert the list of dictionaries into a DataFrame
-                df = pd.DataFrame(records)
-
-                st.session_state.history.append({
-                    "question": user_input,
-                    "answer": df if len(columns) > 1 else data
-                })
+                    st.session_state.history.append({
+                        "question": user_input,
+                        "answer": df
+                    })
             else:
                 # Handle unexpected response format
                 st.session_state.history.append({
