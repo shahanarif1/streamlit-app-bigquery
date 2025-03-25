@@ -71,131 +71,149 @@ def parse_table_data(text):
     return df, pre_text
 
 def send_message():
-    user_input = st.session_state.user_input
-    if user_input.strip():
+    try:
+        user_input = st.session_state.user_input
+        if not user_input or not user_input.strip():
+            return
+
         # Prepare chat history for the API request
         chat_history = []
         for chat in st.session_state.history:
-            chat_history.append({
-                "role": "user",
-                "content": chat["question"]
-            })
-            if isinstance(chat["answer"], dict) and "text" in chat["answer"]:
+            try:
                 chat_history.append({
-                    "role": "assistant",
-                    "content": chat["answer"]["text"]
+                    "role": "user",
+                    "content": chat["question"]
                 })
-            elif isinstance(chat["answer"], str):
-                chat_history.append({
-                    "role": "assistant",
-                    "content": chat["answer"]
-                })
-            elif isinstance(chat["answer"], pd.DataFrame):
-                chat_history.append({
-                    "role": "assistant",
-                    "content": chat["answer"].to_string()
-                })
+                if isinstance(chat["answer"], dict) and "text" in chat["answer"]:
+                    chat_history.append({
+                        "role": "assistant",
+                        "content": chat["answer"]["text"]
+                    })
+                elif isinstance(chat["answer"], str):
+                    chat_history.append({
+                        "role": "assistant",
+                        "content": chat["answer"]
+                    })
+                elif isinstance(chat["answer"], pd.DataFrame):
+                    chat_history.append({
+                        "role": "assistant",
+                        "content": chat["answer"].to_string()
+                    })
+            except Exception as e:
+                print(f"Error processing chat history: {str(e)}")
+                continue
 
         body = {
             "sessionId": session_id,
             "chatInput": user_input,
             "action": "sendMessage",
-            "history": chat_history  # Include chat history in the request
+            "history": chat_history
         }
-        print("Sending request with history:", chat_history)  # Debug print
-        res = requests.post(url, json=body)
-        print("checking Response data:", res.text)
-        # Check if the response content is not empty
-        if res.content:
-            try:
-                res = res.json()
-            except ValueError:
-                # Handle JSON decode error
-                st.session_state.history.append({
-                    "question": user_input,
-                    "answer": f"Error decoding JSON response: {res.text}"
-                })
-                st.session_state.user_input = ""
-                return
-            
-            # Check if the response is in the expected format
-            if isinstance(res, list) and len(res) > 0:
-                data = res
+        
+        try:
+            res = requests.post(url, json=body)
+            res.raise_for_status()  # Raise an exception for bad status codes
+        except requests.exceptions.RequestException as e:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": f"Error making API request: {str(e)}"
+            })
+            st.session_state.user_input = ""
+            return
 
-                # Check if the response should not be shown in a table
-                if "output" in data[0]:
-                    output_text = data[0]["output"]
-                    print("Processing output text:", output_text[:100])  # Print first 100 chars
-                    
-                    # Handle simple chat messages
-                    if "```" not in output_text and not output_text.startswith("Hello!") and "No record found" not in output_text:
-                        print("Handling as simple message")
-                        st.session_state.history.append({
-                            "question": user_input,
-                            "answer": output_text
-                        })
-                    # Handle table responses
-                    elif "```" in output_text:
-                        print("Found code block, attempting to parse table")
-                        try:
-                            df, pre_text = parse_table_data(output_text)
-                            if df is not None:
-                                print("Successfully parsed table")
-                                st.session_state.history.append({
-                                    "question": user_input,
-                                    "answer": {
-                                        "text": pre_text,
-                                        "dataframe": df
-                                    }
-                                })
-                            else:
-                                print("Failed to parse table")
-                                st.session_state.history.append({
-                                    "question": user_input,
-                                    "answer": output_text
-                                })
-                        except Exception as e:
-                            print(f"Error parsing table: {str(e)}")  # Debug print
-                            st.session_state.history.append({
-                                "question": user_input,
-                                "answer": output_text
-                            })
-                    # Handle special messages (Hello, No record found)
-                    else:
-                        print("Handling as special message")
-                        st.session_state.history.append({
-                            "question": user_input,
-                            "answer": output_text
-                        })
-                else:
-                    print("No output field in response")
-                    # Convert the response data into a DataFrame
-                    df = pd.DataFrame(data)
-
-                    # Ensure all columns have consistent types
-                    for column in df.columns:
-                        if df[column].apply(lambda x: isinstance(x, list)).any():
-                            df[column] = df[column].apply(lambda x: str(x) if isinstance(x, list) else x)
-
-                    st.session_state.history.append({
-                        "question": user_input,
-                        "answer": df
-                    })
-            else:
-                print("Unexpected response format")
-                # Handle unexpected response format
-                st.session_state.history.append({
-                    "question": user_input,
-                    "answer": f"Unexpected response format: {data}"
-                })
-        else:
-            print("Empty response content")
-            # Handle empty response content
+        if not res.content:
             st.session_state.history.append({
                 "question": user_input,
                 "answer": "Empty response from server"
             })
+            st.session_state.user_input = ""
+            return
 
+        try:
+            data = res.json()
+        except ValueError as e:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": f"Error decoding JSON response: {str(e)}"
+            })
+            st.session_state.user_input = ""
+            return
+
+        if not isinstance(data, list) or not data:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": "Invalid response format: Expected a non-empty list"
+            })
+            st.session_state.user_input = ""
+            return
+
+        response_data = data[0]
+        if not isinstance(response_data, dict):
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": "Invalid response format: Expected a dictionary"
+            })
+            st.session_state.user_input = ""
+            return
+
+        if "output" not in response_data:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": "Invalid response format: Missing 'output' field"
+            })
+            st.session_state.user_input = ""
+            return
+
+        output_text = response_data["output"]
+        if not isinstance(output_text, str):
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": "Invalid response format: 'output' should be a string"
+            })
+            st.session_state.user_input = ""
+            return
+
+        # Handle different types of responses
+        if "```" not in output_text and not output_text.startswith("Hello!") and "No record found" not in output_text:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": output_text
+            })
+        elif "```" in output_text:
+            try:
+                df, pre_text = parse_table_data(output_text)
+                if df is not None:
+                    st.session_state.history.append({
+                        "question": user_input,
+                        "answer": {
+                            "text": pre_text,
+                            "dataframe": df
+                        }
+                    })
+                else:
+                    st.session_state.history.append({
+                        "question": user_input,
+                        "answer": output_text
+                    })
+            except Exception as e:
+                print(f"Error parsing table: {str(e)}")
+                st.session_state.history.append({
+                    "question": user_input,
+                    "answer": output_text
+                })
+        else:
+            st.session_state.history.append({
+                "question": user_input,
+                "answer": output_text
+            })
+
+    except Exception as e:
+        print(f"Unexpected error in send_message: {str(e)}")
+        st.session_state.history.append({
+            "question": user_input,
+            "answer": f"An unexpected error occurred: {str(e)}"
+        })
+    finally:
         st.session_state.user_input = ""
 
 # Display chat history
