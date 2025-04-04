@@ -14,9 +14,8 @@ st.set_page_config(
 
 # Generate a unique session ID
 session_id = str(uuid.uuid4())
-
-url = "https://html5solutions.app.n8n.cloud/webhook/7eba5fc5-2a52-4ec2-bc37-54aa358a22a1"
-# url= "https://html5solutions.app.n8n.cloud/webhook-test/7eba5fc5-2a52-4ec2-bc37-54aa358a22a1"
+url= "https://n8n.armortechtrading.com/webhook/6d341492-c7d7-45f2-8ed3-dfb6b00350ba"
+# url= "https://n8n.armortechtrading.com/webhook-test/6d341492-c7d7-45f2-8ed3-dfb6b00350ba"
 if "history" not in st.session_state:
     st.session_state.history = []
 
@@ -139,32 +138,15 @@ def send_message():
             st.session_state.user_input = ""
             return
 
-        if not isinstance(data, list) or not data:
+        if not isinstance(data, dict) or "output" not in data:
             st.session_state.history.append({
                 "question": user_input,
-                "answer": "Invalid response format: Expected a non-empty list"
+                "answer": "Invalid response format: Expected a dictionary with 'output' field"
             })
             st.session_state.user_input = ""
             return
 
-        response_data = data[0]
-        if not isinstance(response_data, dict):
-            st.session_state.history.append({
-                "question": user_input,
-                "answer": "Invalid response format: Expected a dictionary"
-            })
-            st.session_state.user_input = ""
-            return
-
-        if "output" not in response_data:
-            st.session_state.history.append({
-                "question": user_input,
-                "answer": "Invalid response format: Missing 'output' field"
-            })
-            st.session_state.user_input = ""
-            return
-
-        output_text = response_data["output"]
+        output_text = data["output"]
         if not isinstance(output_text, str):
             st.session_state.history.append({
                 "question": user_input,
@@ -174,29 +156,48 @@ def send_message():
             return
 
         # Handle different types of responses
-        if "```" not in output_text and not output_text.startswith("Hello!") and "No record found" not in output_text:
-            st.session_state.history.append({
-                "question": user_input,
-                "answer": output_text
-            })
-        elif "```" in output_text:
+        if "```psv" in output_text:
             try:
-                df, pre_text = parse_table_data(output_text)
-                if df is not None:
-                    st.session_state.history.append({
-                        "question": user_input,
-                        "answer": {
-                            "text": pre_text,
-                            "dataframe": df
-                        }
-                    })
-                else:
-                    st.session_state.history.append({
-                        "question": user_input,
-                        "answer": output_text
-                    })
+                # Extract the PSV data
+                psv_pattern = r"```psv\n(.*?)\n```"
+                psv_match = re.search(psv_pattern, output_text, re.DOTALL)
+                if psv_match:
+                    psv_data = psv_match.group(1)
+                    # Split into lines and clean
+                    lines = [line.strip() for line in psv_data.split('\n') if line.strip()]
+                    
+                    if len(lines) >= 2:
+                        # Get headers
+                        headers = [h.strip() for h in lines[0].split('|')]
+                        # Get data rows
+                        rows = []
+                        for line in lines[1:]:
+                            cells = [cell.strip() for cell in line.split('|')]
+                            if len(cells) == len(headers):
+                                rows.append(cells)
+                        
+                        if rows:
+                            df = pd.DataFrame(rows, columns=headers)
+                            # Extract SQL query if present
+                            sql_pattern = r"```sql\n(.*?)\n```"
+                            sql_match = re.search(sql_pattern, output_text, re.DOTALL)
+                            sql_query = sql_match.group(1) if sql_match else None
+                            
+                            # Extract pre-text
+                            pre_text = output_text.split("```psv")[0].strip()
+                            
+                            st.session_state.history.append({
+                                "question": user_input,
+                                "answer": {
+                                    "text": pre_text,
+                                    "dataframe": df,
+                                    "sql_query": sql_query
+                                }
+                            })
+                            st.session_state.user_input = ""
+                            return
             except Exception as e:
-                print(f"Error parsing table: {str(e)}")
+                print(f"Error parsing PSV data: {str(e)}")
                 st.session_state.history.append({
                     "question": user_input,
                     "answer": output_text
@@ -222,14 +223,19 @@ for chat in st.session_state.history:
     with st.chat_message("user"):
         st.markdown(f"*You:* {chat['question']}")
     with st.chat_message("assistant"):
-        if isinstance(chat["answer"], dict) and "text" in chat["answer"] and "dataframe" in chat["answer"]:
-            st.markdown(chat["answer"]["text"])
-            # Configure the dataframe display
-            st.dataframe(
-                chat["answer"]["dataframe"],
-                use_container_width=True,
-                hide_index=True
-            )
+        if isinstance(chat["answer"], dict):
+            if "text" in chat["answer"]:
+                st.markdown(chat["answer"]["text"])
+            if "dataframe" in chat["answer"]:
+                # Configure the dataframe display
+                st.dataframe(
+                    chat["answer"]["dataframe"],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            if "sql_query" in chat["answer"] and chat["answer"]["sql_query"]:
+                st.markdown("**SQL Query Used:**")
+                st.code(chat["answer"]["sql_query"], language="sql")
         elif isinstance(chat["answer"], pd.DataFrame):
             st.dataframe(
                 chat["answer"],
@@ -251,13 +257,18 @@ if st.sidebar.button("Clear History"):
 for i, chat in enumerate(st.session_state.history):
     with st.sidebar.expander(f"Chat {i+1}", expanded=False):
         st.markdown(f"**You:** {chat['question']}")
-        if isinstance(chat["answer"], dict) and "text" in chat["answer"] and "dataframe" in chat["answer"]:
-            st.markdown(chat["answer"]["text"])
-            st.dataframe(
-                chat["answer"]["dataframe"],
-                use_container_width=True,
-                hide_index=True
-            )
+        if isinstance(chat["answer"], dict):
+            if "text" in chat["answer"]:
+                st.markdown(chat["answer"]["text"])
+            if "dataframe" in chat["answer"]:
+                st.dataframe(
+                    chat["answer"]["dataframe"],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            if "sql_query" in chat["answer"] and chat["answer"]["sql_query"]:
+                st.markdown("**SQL Query Used:**")
+                st.code(chat["answer"]["sql_query"], language="sql")
         elif isinstance(chat["answer"], pd.DataFrame):
             st.dataframe(
                 chat["answer"],
