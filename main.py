@@ -175,7 +175,8 @@ def send_message():
                         headers = [h.strip() for h in lines[0].split('|')]
                         # Get data rows
                         rows = []
-                        for line in lines[1:]:
+                        for line in lines[1:]:  # Skip header row
+                            # Split by | and strip each cell
                             cells = [cell.strip() for cell in line.split('|')]
                             if len(cells) == len(headers):
                                 rows.append(cells)
