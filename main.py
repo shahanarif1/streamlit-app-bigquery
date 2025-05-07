@@ -178,6 +178,8 @@ def send_message():
                             if len(cells) == len(headers):
                                 rows.append(cells)
                         
+                        print("Rows are", rows)
+                        print("Headers are", headers)
                         if rows:
                             df = pd.DataFrame(rows, columns=headers)
                             # Extract SQL query if present
