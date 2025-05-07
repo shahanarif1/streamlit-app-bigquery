@@ -187,7 +187,7 @@ def send_message():
                             
                             # Extract pre-text
                             pre_text = output_text.split("```psv")[0].strip()
-                            
+                            print("Pre-text is", pre_text)
                             st.session_state.history.append({
                                 "question": user_input,
                                 "answer": {
