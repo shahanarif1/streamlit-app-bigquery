@@ -164,6 +164,8 @@ def send_message():
                 psv_match = re.search(psv_pattern, output_text, re.DOTALL)
                 if psv_match:
                     psv_data = psv_match.group(1)
+                    print("PSV Data is")
+                    print(psv_data)
                     # Split into lines and clean
                     lines = [line.strip() for line in psv_data.split('\n') if line.strip()]
                     
