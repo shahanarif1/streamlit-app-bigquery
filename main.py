@@ -157,6 +157,7 @@ def send_message():
 
         # Handle different types of responses
         if "```psv" in output_text:
+            print("Table Recieved")
             try:
                 # Extract the PSV data
                 psv_pattern = r"```psv\n(.*?)\n```"
@@ -166,6 +167,7 @@ def send_message():
                     # Split into lines and clean
                     lines = [line.strip() for line in psv_data.split('\n') if line.strip()]
                     
+                    print("Table Extracted and lines are", len(lines))
                     if len(lines) >= 2:
                         # Get headers
                         headers = [h.strip() for h in lines[0].split('|')]
