@@ -178,6 +178,7 @@ def send_message():
                         for line in lines[1:]:  # Skip header row
                             # Split by | and strip each cell
                             cells = [cell.strip() for cell in line.split('|')]
+                            print("Cells are", len(cells), "and headers are", len(headers))
                             if len(cells) == len(headers):
                                 rows.append(cells)
                         
